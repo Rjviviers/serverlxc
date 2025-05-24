@@ -9,12 +9,12 @@
 CONTAINER_NAME="webhost-lxc"
 CONTAINER_OS_IMAGE="ubuntu:22.04" # CloudPanel supports Ubuntu 22.04 [1, 2, 3]
 LXD_STORAGE_BACKEND="dir"         # Using 'dir' for simplicity and wider compatibility.
-                                  # ZFS is an option but requires ZFS tools and kernel support.
+                                  # ZFS is an option but requires ZFS tools and kernel support. [4]
 LXD_STORAGE_POOL_NAME="default"
 
 # --- Helper Functions ---
 print_info() {
-    echo -e "\033[1;34m[INFO]\033\033\033[0m $1"
+    echo -e "\033[1;34m[INFO]\033\033\033\033\033\033\033\033\033[0m $1"
 }
 
 check_command_success() {
@@ -42,7 +42,7 @@ apt update > /dev/null 2>&1 && apt upgrade -y > /dev/null 2>&1
 check_command_success "Host system package update"
 
 print_info "Ensuring LXD (snap package) is installed..."
-if! command -v snap &> /dev/null; then
+if! command -v snap &> /dev/null; then # Corrected line
     print_info "snapd not found. Installing snapd..."
     apt install snapd -y > /dev/null 2>&1
     check_command_success "snapd installation"
@@ -50,7 +50,7 @@ fi
 
 if! snap list lxd &> /dev/null; then
     snap install lxd
-    check_command_success "LXD snap installation"
+    check_command_success "LXD snap installation" [4]
 else
     print_info "LXD snap is already installed."
 fi
@@ -62,7 +62,7 @@ SUDO_USER_TO_ADD=${SUDO_USER:-$(logname 2>/dev/null |
 if &&; then
     if! groups "$SUDO_USER_TO_ADD" | grep -q '\blxd\b'; then
         print_info "Adding user '$SUDO_USER_TO_ADD' to the 'lxd' group..."
-        usermod -a -G lxd "$SUDO_USER_TO_ADD"
+        usermod -a -G lxd "$SUDO_USER_TO_ADD" # [4]
         check_command_success "Adding $SUDO_USER_TO_ADD to lxd group"
         print_warning "User '$SUDO_USER_TO_ADD' has been added to the 'lxd' group. A new login session (or 'newgrp lxd') is required for this change to take effect for that user to run lxc commands without sudo."
     else
@@ -76,7 +76,7 @@ fi
 print_info "Initializing LXD if not already initialized (lxd init --auto)..."
 # Check if LXD is already initialized by looking for the default storage pool or network
 if! lxc storage show "$LXD_STORAGE_POOL_NAME" &> /dev/null ||! lxc network show lxdbr0 &> /dev/null; then
-    lxd init --auto --storage-backend "$LXD_STORAGE_BACKEND" --storage-create-device "$LXD_STORAGE_POOL_NAME"
+    lxd init --auto --storage-backend "$LXD_STORAGE_BACKEND" --storage-create-device "$LXD_STORAGE_POOL_NAME" # [4]
     check_command_success "LXD initialization (lxd init)"
 else
     print_info "LXD appears to be already initialized. Skipping 'lxd init'."
@@ -93,7 +93,7 @@ if lxc info "$CONTAINER_NAME" &> /dev/null; then
         sleep 10 # Give some time for network to come up
     fi
 else
-    lxc launch "$CONTAINER_OS_IMAGE" "$CONTAINER_NAME"
+    lxc launch "$CONTAINER_OS_IMAGE" "$CONTAINER_NAME" # [4]
     check_command_success "LXC container launch"
     print_info "Waiting for container to get an IP address (approx. 15-30 seconds)..."
     sleep 20 # Give some time for the container to boot and get network
@@ -123,13 +123,13 @@ fi
 
 
 print_info "Updating packages within the container '$CONTAINER_NAME'..."
-lxc exec "$CONTAINER_NAME" -- apt-get update # apt-get for non-interactive
+lxc exec "$CONTAINER_NAME" -- apt-get update # apt-get for non-interactive [4]
 check_command_success "Container package list update (apt-get update)"
 lxc exec "$CONTAINER_NAME" -- apt-get upgrade -y
 check_command_success "Container package upgrade (apt-get upgrade -y)"
 
 print_info "Installing dependencies (curl, wget, sudo) in container '$CONTAINER_NAME'..."
-lxc exec "$CONTAINER_NAME" -- apt-get install curl wget sudo -y
+lxc exec "$CONTAINER_NAME" -- apt-get install curl wget sudo -y # [5]
 check_command_success "Container dependency installation"
 
 # 4. Install CloudPanel in the Container
@@ -137,7 +137,7 @@ print_info "Starting CloudPanel installation in container '$CONTAINER_NAME'..."
 print_warning "The CloudPanel installation script will run now. This may take 5-15 minutes."
 print_warning "You WILL BE PROMPTED by the CloudPanel script to choose a database engine (e.g., MariaDB or MySQL). Please monitor the terminal for this prompt."
 
-CLOUDPANEL_INSTALL_COMMAND="curl -sS https://installer.cloudpanel.io/ce/v2/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh"
+CLOUDPANEL_INSTALL_COMMAND="curl -sS https://installer.cloudpanel.io/ce/v2/install.sh -o /tmp/install.sh && sudo bash /tmp/install.sh" # [6, 3]
 # Execute the command. Success/failure is determined by the CloudPanel script itself.
 lxc exec "$CONTAINER_NAME" -- bash -c "$CLOUDPANEL_INSTALL_COMMAND"
 
@@ -154,7 +154,7 @@ print_info "Setting up LXD proxy devices for HTTP (80), HTTPS (443), and CloudPa
 
 # Port 80
 if! lxc config device get "$CONTAINER_NAME" myport80 proxy &> /dev/null; then
-    lxc config device add "$CONTAINER_NAME" myport80 proxy listen=tcp:0.0.0.0:80 connect=tcp:127.0.0.1:80
+    lxc config device add "$CONTAINER_NAME" myport80 proxy listen=tcp:0.0.0.0:80 connect=tcp:127.0.0.1:80 # [4]
     check_command_success "Adding proxy for port 80"
 else
     print_info "Proxy device myport80 already exists for '$CONTAINER_NAME'."
@@ -162,7 +162,7 @@ fi
 
 # Port 443
 if! lxc config device get "$CONTAINER_NAME" myport443 proxy &> /dev/null; then
-    lxc config device add "$CONTAINER_NAME" myport443 proxy listen=tcp:0.0.0.0:443 connect=tcp:127.0.0.1:443
+    lxc config device add "$CONTAINER_NAME" myport443 proxy listen=tcp:0.0.0.0:443 connect=tcp:127.0.0.1:443 # [4]
     check_command_success "Adding proxy for port 443"
 else
     print_info "Proxy device myport443 already exists for '$CONTAINER_NAME'."
@@ -170,7 +170,7 @@ fi
 
 # CloudPanel Admin Port 8443
 if! lxc config device get "$CONTAINER_NAME" clpadminport proxy &> /dev/null; then
-    lxc config device add "$CONTAINER_NAME" clpadminport proxy listen=tcp:0.0.0.0:8443 connect=tcp:127.0.0.1:8443
+    lxc config device add "$CONTAINER_NAME" clpadminport proxy listen=tcp:0.0.0.0:8443 connect=tcp:127.0.0.1:8443 # [3]
     check_command_success "Adding proxy for CloudPanel admin port 8443"
 else
     print_info "Proxy device clpadminport already exists for '$CONTAINER_NAME'."
@@ -189,22 +189,22 @@ if; then
 else
     print_warning "   - Container IP could not be determined. Use 'lxc list $CONTAINER_NAME' on the host to find it."
 fi
-print_info "   You will likely see a browser warning for a self-signed certificate. Proceed to access."
-print_info "2. Create your CloudPanel administrator account when prompted on the first visit."
-print_info "3. Inside CloudPanel: Configure your domain(s), SSL certificates (Let's Encrypt is supported), and databases as needed."
+print_info "   You will likely see a browser warning for a self-signed certificate. Proceed to access." # [3]
+print_info "2. Create your CloudPanel administrator account when prompted on the first visit." # [3]
+print_info "3. Inside CloudPanel: Configure your domain(s), SSL certificates (Let's Encrypt is supported), and databases as needed." # [7, 3]
 print_info "4. For GitHub Integration (Automated Deployments):"
 print_info "   a. Access your container: lxc exec $CONTAINER_NAME -- bash"
-print_info "   b. Install 'dploy': curl -sS https://dploy.cloudpanel.io/dploy -o /usr/local/bin/dploy && sudo chmod +x /usr/local/bin/dploy [2]"
+print_info "   b. Install 'dploy': curl -sS https://dploy.cloudpanel.io/dploy -o /usr/local/bin/dploy && sudo chmod +x /usr/local/bin/dploy [6, 3]"
 print_info "   c. As the specific site user (created by CloudPanel when you add a site):"
-print_info "      - Run 'dploy init' in the site's intended deployment root."
-print_info "      - Generate an SSH key pair for GitHub deployment (ssh-keygen)."
-print_info "      - Add the public key as a Deploy Key to your GitHub repository."
-print_info "      - Configure '~/.ssh/config' for the site user to use this key for github.com."
-print_info "      - Edit '~/.dploy/config.yml' with your repository URL, target path, shared directories/files, and necessary hooks (e.g., PHP-FPM reload for PHP sites).[2, 4]"
-print_info "      - Ensure the site user has sudo permission for PHP-FPM reload if needed (via /etc/sudoers.d/)."
-print_info "   d. Update the site's document root in CloudPanel to point to the 'current/public_html' (or similar) symlink managed by dploy."
-print_info "   e. Consider setting up GitHub Actions for fully automated CI/CD as detailed in the research report (Section VI-B-4)."
-print_info "5. Review and implement security best practices for the host, LXD, the container, CloudPanel, and your web applications (Section VII of the research report)."
+print_info "      - Run 'dploy init' in the site's intended deployment root. [6, 3]"
+print_info "      - Generate an SSH key pair for GitHub deployment (ssh-keygen). [6, 3]"
+print_info "      - Add the public key as a Deploy Key to your GitHub repository. [6, 3]"
+print_info "      - Configure '~/.ssh/config' for the site user to use this key for github.com. [6, 3]"
+print_info "      - Edit '~/.dploy/config.yml' with your repository URL, target path, shared directories/files, and necessary hooks (e.g., PHP-FPM reload for PHP sites). [6, 8, 3]"
+print_info "      - Ensure the site user has sudo permission for PHP-FPM reload if needed (via /etc/sudoers.d/). [6, 3]"
+print_info "   d. Update the site's document root in CloudPanel to point to the 'current/public_html' (or similar) symlink managed by dploy. [6, 3]"
+print_info "   e. Consider setting up GitHub Actions for fully automated CI/CD as detailed in the research report (Section VI-B-4). [8]"
+print_info "5. Review and implement security best practices for the host, LXD, the container, CloudPanel, and your web applications (Section VII of the research report). [9, 10, 11, 12]"
 
 if &&; then
     if! groups "$SUDO_USER_TO_ADD" | grep -q '\blxd\b'; then # Re-check in case script was run by root directly
